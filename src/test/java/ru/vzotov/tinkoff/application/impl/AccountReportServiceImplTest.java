@@ -20,7 +20,7 @@ import ru.vzotov.banking.domain.model.Card;
 import ru.vzotov.banking.domain.model.CardNumber;
 import ru.vzotov.banking.domain.model.OperationId;
 import ru.vzotov.banking.domain.model.OperationType;
-import ru.vzotov.banking.domain.model.PersonId;
+import ru.vzotov.person.domain.model.PersonId;
 import ru.vzotov.banking.domain.model.TransactionReference;
 import ru.vzotov.domain.model.Money;
 import ru.vzotov.tinkoff.domain.model.TinkoffOperation;
