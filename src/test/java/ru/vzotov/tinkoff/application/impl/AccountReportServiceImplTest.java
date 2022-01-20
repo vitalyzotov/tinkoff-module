@@ -104,7 +104,7 @@ public class AccountReportServiceImplTest {
 
         Mockito.when(cardRepository.findByMask("*1234"))
                 .thenReturn(Collections.singletonList(
-                        new Card(CARD_NUMBER, YearMonth.of(2024, Month.DECEMBER), BankId.TINKOFF)
+                        new Card(CARD_NUMBER, PersonId.nextId(), YearMonth.of(2024, Month.DECEMBER), BankId.TINKOFF)
                 ));
 
         Mockito.when(accountRepository.findAccountOfCard(
