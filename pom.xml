@@ -6,7 +6,7 @@
 
     <groupId>ru.vzotov</groupId>
     <artifactId>tinkoff-module</artifactId>
-    <version>1.15</version>
+    <version>1.16-SNAPSHOT</version>
     <name>Module: Tinkoff</name>
 
     <properties>
