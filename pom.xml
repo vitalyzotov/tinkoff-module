@@ -24,7 +24,7 @@
         <slf4j.version>1.7.32</slf4j.version>
         <!-- Own modules -->
         <ddd.version>1.4</ddd.version>
-        <accounting.module.version>1.64-SNAPSHOT</accounting.module.version>
+        <accounting.module.version>1.64</accounting.module.version>
     </properties>
 
     <dependencies>
