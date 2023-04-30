@@ -78,6 +78,29 @@ public class AccountReportServiceTinkoff implements AccountReportService {
         return accountReportRepository.save(name, content);
     }
 
+    private Card suggestCard(final Map<String, Card> context, final String cardNumber) throws IllegalCardNumberException {
+        Card card = null;
+        if (cardNumber != null && !cardNumber.isEmpty()) {
+            card = context.get(cardNumber);
+            if (card == null) {
+                List<Card> cardList = cardRepository.findByMask(cardNumber)
+                        .stream()
+                        .filter(c -> BankId.TINKOFF.equals(c.issuer()))
+                        .collect(Collectors.toList());
+
+                if (cardList.isEmpty()) {
+                    throw new IllegalCardNumberException(String.format("Unable to find card by mask %s", cardNumber));
+                } else if (cardList.size() == 1) {
+                    card = cardList.get(0);
+                    context.put(cardNumber, card);
+                } else {
+                    throw new IllegalCardNumberException(String.format("Multiple cards found by mask {}", cardNumber));
+                }
+            }
+        }
+        return card;
+    }
+
     @Override
     public void processAccountReport(AccountReportId reportId) throws AccountReportNotFoundException, AccountNotFoundException {
         Validate.notNull(reportId);
@@ -90,94 +113,82 @@ public class AccountReportServiceTinkoff implements AccountReportService {
         // Index of cards by their card number in report
         final Map<String, Card> cards = new HashMap<>();
 
-        for (TinkoffOperation row : report.operations()) {
-            final OperationType type = row.operationAmount() < 0d ? WITHDRAW : DEPOSIT;
+        try {
+            for (TinkoffOperation row : report.operations()) {
+                final OperationType type = row.operationAmount() < 0d ? WITHDRAW : DEPOSIT;
 
-            Card card = null;
-            if (row.cardNumber() != null && !row.cardNumber().isEmpty()) {
-                card = cards.get(row.cardNumber());
+                Card card = suggestCard(cards, row.cardNumber());
+
+                final Currency currency = Currency.getInstance(row.operationCurrency());
+
+                final Account account;
                 if (card == null) {
-                    List<Card> cardList = cardRepository.findByMask(row.cardNumber())
-                            .stream()
-                            .filter(c -> BankId.TINKOFF.equals(c.issuer()))
-                            .collect(Collectors.toList());
-
-                    if (cardList.isEmpty()) {
-                        log.error("Unable to find card by mask {}", row.cardNumber());
-                        return;
-                    } else if (cardList.size() == 1) {
-                        card = cardList.get(0);
-                        cards.put(row.cardNumber(), card);
+                    if (row.accountNumber() != null) {
+                        account = accountRepository.find(row.accountNumber());
                     } else {
-                        log.error("Multiple cards found by mask {}", row.cardNumber());
+                        account = accountRepository.find(BankId.TINKOFF, currency).stream()
+                                .min(Comparator.comparing(a -> a.accountNumber().number()))
+                                .orElse(null);
+                    }
+                    if (account == null) {
+                        log.error("Unable to find account for tinkoff and currency {}", currency);
+                        return;
+                    }
+                } else {
+                    account = accountRepository.findAccountOfCard(card.cardNumber(), row.operationDate().toLocalDate());
+                    if (account == null) {
+                        log.error("Unable to find account for card {} and date {}", card.cardNumber(), row.operationDate());
                         return;
                     }
                 }
-            }
 
-            final Currency currency = Currency.getInstance(row.operationCurrency());
+                final AccountNumber accountNumber = account.accountNumber();
+                final Money amount = new Money(Math.abs(row.operationAmount()), currency);
 
-            final Account account;
-            if (card == null) {
-                account = accountRepository.find(BankId.TINKOFF, currency).stream()
-                        .min(Comparator.comparing(a -> a.accountNumber().number()))
-                        .orElse(null);
-                if (account == null) {
-                    log.error("Unable to find account for tinkoff and currency {}", currency);
-                    return;
-                }
-            } else {
-                account = accountRepository.findAccountOfCard(card.cardNumber(), row.operationDate().toLocalDate());
-                if (account == null) {
-                    log.error("Unable to find account for card {} and date {}", card.cardNumber(), row.operationDate());
-                    return;
-                }
-            }
-
-            final AccountNumber accountNumber = account.accountNumber();
-            final Money amount = new Money(Math.abs(row.operationAmount()), currency);
-
-            if (row.isHold()) { // Handle hold records
-                accountingService.registerHoldOperation(
-                        accountNumber,
-                        row.operationDate().toLocalDate(),
-                        type,
-                        amount,
-                        row.description()
-                );
-            } else {
-                final String transactionId = DigestUtils.md5DigestAsHex(
-                        (row.operationDate().toString() + "_" + row.cardNumber() + "_" + row.operationAmount().toString())
-                                .getBytes(StandardCharsets.UTF_8)
-                );
-
-                OperationId operationId = accountingService.registerOperation(
-                        accountNumber,
-                        row.paymentDate(),
-                        new TransactionReference(transactionId),
-                        type,
-                        amount,
-                        row.description()
-                );
-
-                if (row.isCardOperation() && card != null) {
-                    accountingService.registerCardOperation(
-                            operationId,
-                            card.cardNumber(),
-                            null,
-                            row.paymentDate(),
+                if (row.isHold()) { // Handle hold records
+                    accountingService.registerHoldOperation(
+                            accountNumber,
                             row.operationDate().toLocalDate(),
+                            type,
                             amount,
-                            null,
-                            new MccCode(row.mcc())
+                            row.description()
                     );
+                } else {
+                    final String transactionId = DigestUtils.md5DigestAsHex(
+                            (row.operationDate().toString() + "_" + row.cardNumber() + "_" + row.operationAmount().toString())
+                                    .getBytes(StandardCharsets.UTF_8)
+                    );
+
+                    OperationId operationId = accountingService.registerOperation(
+                            accountNumber,
+                            row.paymentDate(),
+                            new TransactionReference(transactionId),
+                            type,
+                            amount,
+                            row.description()
+                    );
+
+                    if (row.isCardOperation() && card != null) {
+                        accountingService.registerCardOperation(
+                                operationId,
+                                card.cardNumber(),
+                                null,
+                                row.paymentDate(),
+                                row.operationDate().toLocalDate(),
+                                amount,
+                                null,
+                                new MccCode(row.mcc())
+                        );
+                    }
+
+                    accountingService.removeMatchingHoldOperations(operationId);
                 }
-
-                accountingService.removeMatchingHoldOperations(operationId);
             }
-        }
 
-        accountReportRepository.markProcessed(reportId);
+            accountReportRepository.markProcessed(reportId);
+        } catch (IllegalCardNumberException e) {
+            log.error(e.getMessage());
+        }
     }
 
     @Override
@@ -197,5 +208,11 @@ public class AccountReportServiceTinkoff implements AccountReportService {
             }
         }
 
+    }
+
+    private static class IllegalCardNumberException extends Exception {
+        public IllegalCardNumberException(String message) {
+            super(message);
+        }
     }
 }

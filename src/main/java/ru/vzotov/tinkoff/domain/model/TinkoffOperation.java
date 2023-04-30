@@ -4,6 +4,7 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.apache.commons.lang.builder.EqualsBuilder;
 import ru.vzotov.accounting.domain.model.AccountReportOperation;
+import ru.vzotov.banking.domain.model.AccountNumber;
 import ru.vzotov.ddd.shared.ValueObject;
 
 import java.time.LocalDate;
@@ -12,6 +13,7 @@ import java.util.Objects;
 
 public class TinkoffOperation implements ValueObject<TinkoffOperation>, AccountReportOperation {
 
+    private final AccountNumber accountNumber;
     private final LocalDateTime operationDate;
     private final LocalDate paymentDate;
     private final String cardNumber;
@@ -25,17 +27,16 @@ public class TinkoffOperation implements ValueObject<TinkoffOperation>, AccountR
     private final String description;
     private final Double bonus;
 
-    public TinkoffOperation(LocalDateTime operationDate, LocalDate paymentDate, String cardNumber, Double operationAmount, String operationCurrency, Double paymentAmount, String paymentCurrency, Double cashBack, String category, String mcc, String description, Double bonus) {
+    public TinkoffOperation(AccountNumber accountNumber, LocalDateTime operationDate, LocalDate paymentDate, String cardNumber, Double operationAmount, String operationCurrency, Double paymentAmount, String paymentCurrency, Double cashBack, String category, String mcc, String description, Double bonus) {
         Validate.notNull(operationDate);
         Validate.notNull(operationAmount);
         Validate.notNull(operationCurrency);
         Validate.notNull(paymentAmount);
         Validate.notNull(paymentCurrency);
-        Validate.notNull(category);
         Validate.notNull(description);
-        Validate.notNull(bonus);
         Validate.isTrue(mcc == null || !mcc.isEmpty());
 
+        this.accountNumber = accountNumber;
         this.operationDate = operationDate;
         this.paymentDate = paymentDate;
         this.cardNumber = cardNumber;
@@ -48,6 +49,10 @@ public class TinkoffOperation implements ValueObject<TinkoffOperation>, AccountR
         this.mcc = StringUtils.leftPad(mcc, 4, '0');
         this.description = description;
         this.bonus = bonus;
+    }
+
+    public AccountNumber accountNumber() {
+        return accountNumber;
     }
 
     public boolean isHold() {
@@ -109,6 +114,7 @@ public class TinkoffOperation implements ValueObject<TinkoffOperation>, AccountR
     @Override
     public boolean sameValueAs(TinkoffOperation that) {
         return that != null && new EqualsBuilder().
+                append(accountNumber, that.accountNumber).
                 append(operationDate, that.operationDate).
                 append(paymentDate, that.paymentDate).
                 append(cardNumber, that.cardNumber).
@@ -134,7 +140,8 @@ public class TinkoffOperation implements ValueObject<TinkoffOperation>, AccountR
 
     @Override
     public int hashCode() {
-        return Objects.hash(operationDate
+        return Objects.hash(accountNumber
+                , operationDate
                 , paymentDate
                 , cardNumber
                 , operationAmount
@@ -147,5 +154,24 @@ public class TinkoffOperation implements ValueObject<TinkoffOperation>, AccountR
                 , description
                 , bonus
         );
+    }
+
+    @Override
+    public String toString() {
+        return "tinkoff{" +
+                "AN=" + accountNumber +
+                ", OD=" + operationDate +
+                ", PD=" + paymentDate +
+                ", CARD='" + cardNumber + '\'' +
+                ", OA=" + operationAmount +
+                ", OC='" + operationCurrency + '\'' +
+                ", PA=" + paymentAmount +
+                ", PC='" + paymentCurrency + '\'' +
+                ", CB=" + cashBack +
+                ", CAT='" + category + '\'' +
+                ", MCC='" + mcc + '\'' +
+                ", D='" + description + '\'' +
+                ", B=" + bonus +
+                '}';
     }
 }

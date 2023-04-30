@@ -1,17 +1,28 @@
 package ru.vzotov.tinkoff.infrastructure.fs;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.DeserializationContext;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
+import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
+import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVRecord;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.Validate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.vzotov.accounting.domain.model.AccountReport;
 import ru.vzotov.accounting.domain.model.AccountReportId;
 import ru.vzotov.accounting.domain.model.AccountReportRepository;
+import ru.vzotov.banking.domain.model.AccountNumber;
 import ru.vzotov.tinkoff.domain.model.TinkoffOperation;
 
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamReader;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
@@ -20,6 +31,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
+import java.math.BigDecimal;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -28,31 +40,44 @@ import java.text.DecimalFormatSymbols;
 import java.text.ParseException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeFormatterBuilder;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
 import static java.time.temporal.ChronoField.DAY_OF_MONTH;
 import static java.time.temporal.ChronoField.HOUR_OF_DAY;
+import static java.time.temporal.ChronoField.MILLI_OF_SECOND;
 import static java.time.temporal.ChronoField.MINUTE_OF_HOUR;
 import static java.time.temporal.ChronoField.MONTH_OF_YEAR;
 import static java.time.temporal.ChronoField.SECOND_OF_MINUTE;
 import static java.time.temporal.ChronoField.YEAR;
+import static java.util.Objects.requireNonNull;
+import static javax.xml.stream.XMLStreamConstants.END_ELEMENT;
+import static javax.xml.stream.XMLStreamConstants.START_ELEMENT;
 
 public class TinkoffReportRepositoryFiles implements AccountReportRepository<TinkoffOperation> {
 
     private static final Logger log = LoggerFactory.getLogger(AccountReportRepository.class);
 
-    private static final String REPORT_EXT = ".csv";
-    private static final String REPORT_PROCESSED_EXT = "_processed.csv";
+    private static final String CSV = ".csv";
+    private static final String OFX = ".ofx";
+    private static final String CSV_PROCESSED = "_processed.csv";
+    private static final String OFX_PROCESSED = "_processed.ofx";
+
     private static final DateTimeFormatter DATE_FORMAT = new DateTimeFormatterBuilder()
             .appendValue(DAY_OF_MONTH, 2)
             .appendLiteral('.')
@@ -75,7 +100,9 @@ public class TinkoffReportRepositoryFiles implements AccountReportRepository<Tin
             .appendValue(SECOND_OF_MINUTE, 2)
             .toFormatter();
 
-    private static final Function<File, AccountReportId> MAPPER = file -> {
+    public static final ZoneId TINKOFF_TZ = ZoneId.of("Europe/Moscow");
+
+    private static final Function<File, AccountReportId> ID_OF = file -> {
         try {
             BasicFileAttributes basicFileAttributes = Files.readAttributes(file.toPath(), BasicFileAttributes.class);
 
@@ -89,12 +116,20 @@ public class TinkoffReportRepositoryFiles implements AccountReportRepository<Tin
 
     private final File baseDirectory;
 
+    private final boolean readOnly;
+
     public TinkoffReportRepositoryFiles(String baseDirectoryPath) {
+        this(baseDirectoryPath, false);
+    }
+
+    public TinkoffReportRepositoryFiles(String baseDirectoryPath, boolean readOnly) {
         this.baseDirectoryPath = baseDirectoryPath;
         this.baseDirectory = new File(baseDirectoryPath);
-        log.info("Check base directory permissions {}", this.baseDirectory.getAbsolutePath());
+        this.readOnly = readOnly;
+        log.info("Checking base directory permissions {}...", this.baseDirectory.getAbsolutePath());
         Validate.isTrue(this.baseDirectory.isDirectory());
         Validate.isTrue(this.baseDirectory.canRead());
+        log.info("The permissions for the base directory are valid");
     }
 
     protected String getBaseDirectoryPath() {
@@ -106,12 +141,87 @@ public class TinkoffReportRepositoryFiles implements AccountReportRepository<Tin
     }
 
     @Override
-    public AccountReport<TinkoffOperation> find(AccountReportId reportId) {
+    public AccountReport<TinkoffOperation> find(final AccountReportId reportId) {
         Validate.notNull(reportId);
         final File reportFile = new File(this.getBaseDirectory(), reportId.name());
         Validate.isTrue(reportFile.exists() && reportFile.canRead());
 
+        final String name = reportId.name().toLowerCase();
+        if (name.endsWith(CSV)) {
+            return parseCSV(reportId, reportFile);
+        } else if (name.endsWith(OFX)) {
+            return parseOFX(reportId, reportFile);
+        }
+        throw new IllegalArgumentException();
+    }
 
+    AccountReport<TinkoffOperation> parseOFX(final AccountReportId reportId, final File reportFile) {
+        final XMLInputFactory f = XMLInputFactory.newFactory();
+        try (final FileInputStream stream = new FileInputStream(reportFile)) {
+            final XMLStreamReader sr = f.createXMLStreamReader(stream);
+            final XmlMapper mapper = new XmlMapper();
+            final List<TinkoffOperation> operations = new ArrayList<>();
+            String tagName;
+            AccountNumber currentAccount = null;
+            while (sr.hasNext()) {
+                int eventType = sr.next();
+                switch (eventType) {
+                    case START_ELEMENT:
+                        tagName = sr.getName().getLocalPart();
+                        if ("BANKACCTFROM".equalsIgnoreCase(tagName)) {
+                            final OfxBankAccount account = mapper.readValue(sr, OfxBankAccount.class);
+                            currentAccount = new AccountNumber(account.accountId);
+                        } else if ("STMTRS".equalsIgnoreCase(tagName)) {
+                            currentAccount = null;
+                        } else if ("STMTTRN".equalsIgnoreCase(tagName)) {
+                            final Statement stmt = mapper.readValue(sr, Statement.class);
+
+                            final LocalDateTime operationDateTime = stmt.dateTime.toInstant()
+                                    .atZone(TINKOFF_TZ).toLocalDateTime();
+                            final TinkoffOperation operation = new TinkoffOperation(
+                                    currentAccount,
+                                    operationDateTime,
+                                    operationDateTime.toLocalDate(),
+                                    null,
+                                    stmt.getAmount().doubleValue(),
+                                    mapCurrency(stmt.getCurrency().getCode()),
+                                    stmt.getAmount().doubleValue(),
+                                    mapCurrency(stmt.getCurrency().getCode()),
+                                    null,
+                                    stmt.getMemo(),
+                                    null,
+                                    stmt.getFitId() + " " + stmt.getName(),
+                                    null
+                            );
+                            operations.add(operation);
+                        }
+                        break;
+                    case END_ELEMENT:
+                        tagName = sr.getName().getLocalPart();
+                        if ("STMTRS".equalsIgnoreCase(tagName)) {
+                            currentAccount = null;
+                        }
+                        break;
+                }
+            }
+
+            return new AccountReport<>(reportId, operations);
+        } catch (XMLStreamException | IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    static LocalDateTime tzConvert(LocalDateTime dateTime, ZoneId from, ZoneId to) {
+        return dateTime == null ? null : dateTime.atZone(from).toInstant().atZone(to).toLocalDateTime();
+    }
+
+    static LocalDate max(LocalDate date1, LocalDate date2) {
+        return date1 == null ? date2 :
+                date2 == null ? date1 :
+                        date1.isAfter(date2) ? date1 : date2;
+    }
+
+    AccountReport<TinkoffOperation> parseCSV(final AccountReportId reportId, final File reportFile) {
         try (Reader in = new InputStreamReader(new FileInputStream(reportFile), Charset.forName("Cp1251"))) {
             final CSVFormat csvFormat = CSVFormat.Builder.create(CSVFormat.Predefined.Default.getFormat())
                     .setDelimiter(';')
@@ -127,8 +237,8 @@ public class TinkoffReportRepositoryFiles implements AccountReportRepository<Tin
 
                 final DecimalFormat decimals = createDecimalFormat(new Locale("ru"));
                 final LocalDateTime operationDateTime = LocalDateTime.parse(record.get("Дата операции"), DATETIME_FORMAT);
-                final LocalDate paymentDate = parseDateOrNull(record.get("Дата платежа"));
-                final String cardNumber = record.get("Номер карты");
+                final LocalDate paymentDate = max(parseDateOrNull(record.get("Дата платежа")), operationDateTime.toLocalDate());
+                final String cardNumber = StringUtils.trimToNull(record.get("Номер карты"));
                 final double operationAmount = parseDoubleOrNull(record.get("Сумма операции"), decimals);
                 final String operationCurrency = mapCurrency(record.get("Валюта операции"));
                 final double paymentAmount = parseDoubleOrNull(record.get("Сумма платежа"), decimals);
@@ -140,6 +250,7 @@ public class TinkoffReportRepositoryFiles implements AccountReportRepository<Tin
                 final double bonus = parseDoubleOrNull(record.get("Бонусы (включая кэшбэк)"), decimals);
 
                 return new TinkoffOperation(
+                        null,
                         operationDateTime,
                         paymentDate,
                         cardNumber,
@@ -200,23 +311,29 @@ public class TinkoffReportRepositoryFiles implements AccountReportRepository<Tin
 
     @Override
     public List<AccountReportId> findAll() {
-        final FileFilter filter = pathname -> pathname.getName().endsWith(REPORT_EXT);
+        final FileFilter filter = pathname -> {
+            final String name = pathname.getName().toLowerCase();
+            return name.endsWith(CSV) || name.endsWith(OFX);
+        };
 
-        return Arrays.stream(Objects.requireNonNull(this.getBaseDirectory().listFiles(filter)))
+        return Arrays.stream(requireNonNull(this.getBaseDirectory().listFiles(filter)))
                 .sorted(Comparator.naturalOrder())
-                .map(MAPPER)
+                .map(ID_OF)
                 .collect(Collectors.toList());
 
     }
 
     @Override
     public List<AccountReportId> findUnprocessed() {
-        final FileFilter filter = pathname -> pathname.getName().toLowerCase().endsWith(REPORT_EXT)
-                && !pathname.getName().toLowerCase().endsWith(REPORT_PROCESSED_EXT);
+        final FileFilter filter = pathname -> {
+            final String name = pathname.getName().toLowerCase();
+            return (name.endsWith(CSV) && !name.endsWith(CSV_PROCESSED)) ||
+                    (name.endsWith(OFX) && !name.endsWith(OFX_PROCESSED));
+        };
 
-        return Arrays.stream(Objects.requireNonNull(this.getBaseDirectory().listFiles(filter)))
+        return Arrays.stream(requireNonNull(this.getBaseDirectory().listFiles(filter)))
                 .sorted(Comparator.naturalOrder())
-                .map(MAPPER)
+                .map(ID_OF)
                 .collect(Collectors.toList());
     }
 
@@ -226,15 +343,21 @@ public class TinkoffReportRepositoryFiles implements AccountReportRepository<Tin
 
         final File reportFile = new File(this.getBaseDirectory(), reportId.name());
 
+        final boolean isCsv = reportId.name().toLowerCase().endsWith(CSV);
         final String baseName = FilenameUtils.removeExtension(reportId.name());
 
-        final File processedReportFile = new File(this.getBaseDirectory(), baseName + REPORT_PROCESSED_EXT);
+        final File processedReportFile = new File(
+                this.getBaseDirectory(),
+                baseName + (isCsv ? CSV_PROCESSED : OFX_PROCESSED)
+        );
 
         Validate.isTrue(reportFile.exists() && reportFile.canRead() && reportFile.canWrite());
         Validate.isTrue(!processedReportFile.exists());
 
         try {
-            FileUtils.moveFile(reportFile, processedReportFile);
+            if (!readOnly) {
+                FileUtils.moveFile(reportFile, processedReportFile);
+            }
         } catch (IOException e) {
             throw new IllegalStateException("Unable to mark processed", e);
         }
@@ -244,19 +367,222 @@ public class TinkoffReportRepositoryFiles implements AccountReportRepository<Tin
     public AccountReportId save(String name, InputStream content) throws IOException {
         Validate.notEmpty(name);
         Validate.notNull(content);
-        Validate.isTrue(name.endsWith(REPORT_EXT), "Invalid name of report: ", name);
-        Validate.isTrue(!name.endsWith(REPORT_PROCESSED_EXT), "Saving already processed reports is not allowed:", name);
+        Validate.isTrue(name.endsWith(CSV) || name.endsWith(OFX), "Invalid name of report: ", name);
+        Validate.isTrue(!(name.endsWith(CSV_PROCESSED) || name.endsWith(OFX_PROCESSED)),
+                "Saving already processed reports is not allowed:", name);
 
         final File reportFile = new File(this.getBaseDirectory(), name);
         Validate.isTrue(!reportFile.exists(), "Report file already exists:", name);
 
         final String baseName = FilenameUtils.removeExtension(name);
-        final File processedReportFile = new File(this.getBaseDirectory(), baseName + REPORT_PROCESSED_EXT);
-        Validate.isTrue(!processedReportFile.exists(), "Report file with this name is already processed earlier:", name);
+        final File processedCSVFile = new File(this.getBaseDirectory(), baseName + CSV_PROCESSED);
+        Validate.isTrue(!processedCSVFile.exists(), "Report file with this name is already processed earlier:", name);
+
+        final File processedOFXFile = new File(this.getBaseDirectory(), baseName + OFX_PROCESSED);
+        Validate.isTrue(!processedOFXFile.exists(), "Report file with this name is already processed earlier:", name);
 
         FileUtils.copyInputStreamToFile(content, reportFile);
 
-        return MAPPER.apply(reportFile);
+        return ID_OF.apply(reportFile);
     }
 
+    private static class OfxBankAccount {
+        @JsonProperty("BANKID")
+        private String bankId;
+        @JsonProperty("ACCTID")
+        private String accountId;
+        @JsonProperty("ACCTTYPE")
+        private String accountType;
+
+        public String getBankId() {
+            return bankId;
+        }
+
+        public void setBankId(String bankId) {
+            this.bankId = bankId;
+        }
+
+        public String getAccountId() {
+            return accountId;
+        }
+
+        public void setAccountId(String accountId) {
+            this.accountId = accountId;
+        }
+
+        public String getAccountType() {
+            return accountType;
+        }
+
+        public void setAccountType(String accountType) {
+            this.accountType = accountType;
+        }
+
+        @Override
+        public String toString() {
+            return "OfxBankAccount{" +
+                    "bankId='" + bankId + '\'' +
+                    ", accountId='" + accountId + '\'' +
+                    ", accountType='" + accountType + '\'' +
+                    '}';
+        }
+    }
+
+    private static class Statement {
+        @JsonProperty("TRNTYPE")
+        private String type;
+        @JsonProperty("DTPOSTED")
+        @JsonDeserialize(using = OfxDateSerializer.class)
+        private OffsetDateTime dateTime;
+        @JsonProperty("TRNAMT")
+        private BigDecimal amount;
+        @JsonProperty("FITID")
+        private String fitId;
+        @JsonProperty("NAME")
+        private String name;
+        @JsonProperty("MEMO")
+        private String memo;
+        @JsonProperty("CURRENCY")
+        private OfxCurrency currency;
+
+        public String getType() {
+            return type;
+        }
+
+        public void setType(String type) {
+            this.type = type;
+        }
+
+        public OffsetDateTime getDateTime() {
+            return dateTime;
+        }
+
+        public void setDateTime(OffsetDateTime dateTime) {
+            this.dateTime = dateTime;
+        }
+
+        public BigDecimal getAmount() {
+            return amount;
+        }
+
+        public void setAmount(BigDecimal amount) {
+            this.amount = amount;
+        }
+
+        public String getFitId() {
+            return fitId;
+        }
+
+        public void setFitId(String fitId) {
+            this.fitId = fitId;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+
+        public String getMemo() {
+            return memo;
+        }
+
+        public void setMemo(String memo) {
+            this.memo = memo;
+        }
+
+        public OfxCurrency getCurrency() {
+            return currency;
+        }
+
+        public void setCurrency(OfxCurrency currency) {
+            this.currency = currency;
+        }
+
+        @Override
+        public String toString() {
+            return "STMTTRN{" +
+                    "TRNTYPE='" + type + '\'' +
+                    ", DTPOSTED='" + dateTime + '\'' +
+                    ", TRNAMT='" + amount + '\'' +
+                    ", FITID='" + fitId + '\'' +
+                    ", NAME='" + name + '\'' +
+                    ", MEMO='" + memo + '\'' +
+                    ", CURRENCY=" + currency +
+                    '}';
+        }
+    }
+
+    private static class OfxCurrency {
+        @JsonProperty("CURSYM")
+        private String code;
+        @JsonProperty("CURRATE")
+        private BigDecimal rate;
+
+        public String getCode() {
+            return code;
+        }
+
+        public void setCode(String code) {
+            this.code = code;
+        }
+
+        public BigDecimal getRate() {
+            return rate;
+        }
+
+        public void setRate(BigDecimal rate) {
+            this.rate = rate;
+        }
+
+        @Override
+        public String toString() {
+            return "CURRENCY{" +
+                    "CURSYM='" + code + '\'' +
+                    ", CURRATE='" + rate + '\'' +
+                    '}';
+        }
+    }
+
+    private static class OfxDateSerializer extends StdDeserializer<OffsetDateTime> {
+
+        private static final DateTimeFormatter OFX_DATETIME = new DateTimeFormatterBuilder()
+                .appendValue(YEAR, 4)
+                .appendValue(MONTH_OF_YEAR, 2)
+                .appendValue(DAY_OF_MONTH, 2)
+                .appendValue(HOUR_OF_DAY, 2)
+                .appendValue(MINUTE_OF_HOUR, 2)
+                .appendValue(SECOND_OF_MINUTE, 2)
+                .optionalStart()
+                .appendLiteral('.')
+                .appendValue(MILLI_OF_SECOND, 3)
+                .optionalEnd()
+                .toFormatter();
+
+        private static final Pattern PATTERN = Pattern.compile("(\\d{14}(\\.\\d{3})?)\\[([+-]\\d{1,2})(\\d{0,2})\\:(\\w+)\\]");
+
+        public OfxDateSerializer() {
+            this(null);
+        }
+
+        public OfxDateSerializer(Class<?> vc) {
+            super(vc);
+        }
+
+        @Override
+        public OffsetDateTime deserialize(JsonParser jsonParser, DeserializationContext deserializationContext) throws IOException {
+            String value = jsonParser.getText();
+            final Matcher matcher = PATTERN.matcher(value);
+            Validate.isTrue(matcher.matches());
+            LocalDateTime time = LocalDateTime.parse(matcher.group(1), OFX_DATETIME);
+
+            final String offsetMinutes = matcher.group(4);
+            return OffsetDateTime.of(time, ZoneOffset.ofHoursMinutes(
+                    Integer.parseInt(matcher.group(3)),
+                    offsetMinutes == null || offsetMinutes.length() == 0 ? 0 : Integer.parseInt(offsetMinutes)
+            ));
+        }
+    }
 }

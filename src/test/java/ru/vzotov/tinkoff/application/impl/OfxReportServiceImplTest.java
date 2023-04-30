@@ -8,7 +8,6 @@ import org.mockito.Mockito;
 import ru.vzotov.accounting.application.AccountNotFoundException;
 import ru.vzotov.accounting.application.AccountReportNotFoundException;
 import ru.vzotov.accounting.application.AccountingService;
-import ru.vzotov.accounting.domain.model.AccountReport;
 import ru.vzotov.accounting.domain.model.AccountReportId;
 import ru.vzotov.accounting.domain.model.AccountReportRepository;
 import ru.vzotov.accounting.domain.model.AccountRepository;
@@ -20,84 +19,47 @@ import ru.vzotov.banking.domain.model.Card;
 import ru.vzotov.banking.domain.model.CardNumber;
 import ru.vzotov.banking.domain.model.OperationId;
 import ru.vzotov.banking.domain.model.OperationType;
-import ru.vzotov.person.domain.model.PersonId;
 import ru.vzotov.banking.domain.model.TransactionReference;
 import ru.vzotov.domain.model.Money;
+import ru.vzotov.person.domain.model.PersonId;
 import ru.vzotov.tinkoff.domain.model.TinkoffOperation;
 import ru.vzotov.tinkoff.infrastructure.fs.TinkoffReportRepositoryFiles;
 
 import java.io.File;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.Month;
+import java.time.OffsetDateTime;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.List;
+import java.util.UUID;
+
+import static ru.vzotov.tinkoff.infrastructure.fs.TinkoffReportRepositoryFiles.TINKOFF_TZ;
 
 @RunWith(JUnit4.class)
-public class AccountReportServiceImplTest {
+public class OfxReportServiceImplTest {
 
+    private static final File BASEDIR = new File("src/test/resources/account-reports");
     private static final AccountNumber ACCOUNT_NUMBER = new AccountNumber("40817810000016123456");
     private static final Account ACCOUNT = new Account(ACCOUNT_NUMBER, new PersonId("vzotov"));
     private static final CardNumber CARD_NUMBER = new CardNumber("5536913837701234");
 
     private AccountReportServiceTinkoff service;
-    private AccountReportId reportId;
     private AccountReportRepository<TinkoffOperation> reportRepository;
     private AccountingService accountingService;
     private AccountRepository accountRepository;
     private CardRepository cardRepository;
 
-
     @Before
     @SuppressWarnings("unchecked")
     public void setUp() throws Exception {
-        reportRepository = Mockito.mock(AccountReportRepository.class);
+        reportRepository = new TinkoffReportRepositoryFiles(BASEDIR.getAbsolutePath(), true);
         accountingService = Mockito.mock(AccountingService.class);
         accountRepository = Mockito.mock(AccountRepository.class);
         cardRepository = Mockito.mock(CardRepository.class);
 
         service = new AccountReportServiceTinkoff(reportRepository, accountingService, accountRepository, cardRepository);
-        reportId = new AccountReportId("test-1", LocalDate.now().atStartOfDay().toInstant(ZoneOffset.UTC));
-
-        List<TinkoffOperation> operations = Arrays.asList(
-                new TinkoffOperation(
-                        null,
-                        LocalDateTime.of(2020, Month.FEBRUARY, 21, 20, 0, 31),
-                        LocalDate.of(2020, Month.FEBRUARY, 21),
-                        "*1234",
-                        2000d,
-                        "RUR",
-                        2000d,
-                        "RUR",
-                        null,
-                        "Финан. услуги",
-                        "6012",
-                        "Перевод с карты",
-                        0d
-                ),
-                new TinkoffOperation(
-                        null,
-                        LocalDateTime.of(2020, Month.MARCH, 9, 16, 26, 49),
-                        LocalDate.of(2020, Month.MARCH, 11),
-                        "*1234",
-                        -809d,
-                        "RUR",
-                        -809d,
-                        "RUR",
-                        8d,
-                        "Животные",
-                        "742",
-                        "Vitavet",
-                        8d
-                )
-        );
-
-        Mockito.when(reportRepository.find(reportId))
-                .thenReturn(new AccountReport<>(reportId, operations));
 
         Mockito.when(accountingService.registerOperation(
                 Mockito.any(AccountNumber.class),
@@ -106,7 +68,7 @@ public class AccountReportServiceImplTest {
                 Mockito.any(OperationType.class),
                 Mockito.any(Money.class),
                 Mockito.anyString()
-        )).thenReturn(new OperationId("test-op-1"), new OperationId("test-op-2"));
+        )).thenAnswer(i -> new OperationId(UUID.randomUUID().toString()));
 
         Mockito.when(cardRepository.findByMask("*1234"))
                 .thenReturn(Collections.singletonList(
@@ -116,30 +78,36 @@ public class AccountReportServiceImplTest {
         Mockito.when(accountRepository.findAccountOfCard(
                 Mockito.eq(CARD_NUMBER), Mockito.any(LocalDate.class)
         )).thenReturn(ACCOUNT);
-
         Mockito.when(accountRepository.find(Mockito.eq(ACCOUNT_NUMBER))).thenReturn(ACCOUNT);
     }
 
-    @Test
-    public void processAccountReport() throws AccountReportNotFoundException, AccountNotFoundException {
-        service.processAccountReport(new AccountReportId("test-1", LocalDate.now().atStartOfDay().toInstant(ZoneOffset.UTC)));
-        Mockito.verify(accountingService).registerOperation(
-                ACCOUNT_NUMBER,
-                LocalDate.of(2020, Month.FEBRUARY, 21),
-                new TransactionReference("753fd3bc64c3c0d168d1d0e7b3618ab3"),
-                OperationType.DEPOSIT,
-                Money.kopecks(200000),
-                "Перевод с карты"
-        );
-        Mockito.verify(accountingService).registerOperation(
-                ACCOUNT_NUMBER,
-                LocalDate.of(2020, Month.MARCH, 11),
-                new TransactionReference("157e610c7b39e7abf8e726d5305743fe"),
-                OperationType.WITHDRAW,
-                Money.rubles(809d),
-                "Vitavet"
-        );
-    }
 
+    @Test
+    public void processOfxReport() throws AccountReportNotFoundException, AccountNotFoundException {
+        final String name = "report_1.ofx";
+        service.processAccountReport(new AccountReportId(name, Instant.now()));
+        Mockito.verify(accountingService, Mockito.times(9))
+                .registerOperation(
+                        Mockito.eq(ACCOUNT_NUMBER),
+                        Mockito.any(LocalDate.class),
+                        Mockito.any(TransactionReference.class),
+                        Mockito.any(OperationType.class),
+                        Mockito.any(Money.class),
+                        Mockito.anyString()
+                );
+        Mockito.verify(accountingService)
+                .registerOperation(
+                        Mockito.eq(ACCOUNT_NUMBER),
+                        Mockito.eq(
+                                OffsetDateTime.of(2023, 3, 24, 23, 10, 10, 0,
+                                                ZoneOffset.ofHoursMinutes(3, 0)).toInstant()
+                                        .atZone(TINKOFF_TZ).toLocalDate()
+                        ),
+                        Mockito.any(TransactionReference.class),
+                        Mockito.eq(OperationType.DEPOSIT),
+                        Mockito.eq(Money.rubles(20.0)),
+                        Mockito.eq("43319285777 Кэшбэк за обычные покупки")
+                );
+    }
 
 }
