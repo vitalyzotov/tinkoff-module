@@ -183,14 +183,14 @@ public class TinkoffReportRepositoryFiles implements AccountReportRepository<Tin
                                     operationDateTime,
                                     operationDateTime.toLocalDate(),
                                     null,
-                                    stmt.getAmount().doubleValue(),
-                                    mapCurrency(stmt.getCurrency().getCode()),
-                                    stmt.getAmount().doubleValue(),
-                                    mapCurrency(stmt.getCurrency().getCode()),
+                                    stmt.amount().doubleValue(),
+                                    mapCurrency(stmt.currency().code()),
+                                    stmt.amount().doubleValue(),
+                                    mapCurrency(stmt.currency().code()),
                                     null,
-                                    stmt.getMemo(),
+                                    stmt.memo(),
                                     null,
-                                    stmt.getFitId() + " " + stmt.getName(),
+                                    stmt.fitId() + " " + stmt.name(),
                                     null
                             );
                             operations.add(operation);
@@ -386,164 +386,21 @@ public class TinkoffReportRepositoryFiles implements AccountReportRepository<Tin
         return ID_OF.apply(reportFile);
     }
 
-    private static class OfxBankAccount {
-        @JsonProperty("BANKID")
-        private String bankId;
-        @JsonProperty("ACCTID")
-        private String accountId;
-        @JsonProperty("ACCTTYPE")
-        private String accountType;
-
-        public String getBankId() {
-            return bankId;
-        }
-
-        public void setBankId(String bankId) {
-            this.bankId = bankId;
-        }
-
-        public String getAccountId() {
-            return accountId;
-        }
-
-        public void setAccountId(String accountId) {
-            this.accountId = accountId;
-        }
-
-        public String getAccountType() {
-            return accountType;
-        }
-
-        public void setAccountType(String accountType) {
-            this.accountType = accountType;
-        }
-
-        @Override
-        public String toString() {
-            return "OfxBankAccount{" +
-                    "bankId='" + bankId + '\'' +
-                    ", accountId='" + accountId + '\'' +
-                    ", accountType='" + accountType + '\'' +
-                    '}';
-        }
+    private record OfxBankAccount(@JsonProperty("BANKID") String bankId, @JsonProperty("ACCTID") String accountId,
+                                  @JsonProperty("ACCTTYPE") String accountType) {
     }
 
-    private static class Statement {
-        @JsonProperty("TRNTYPE")
-        private String type;
-        @JsonProperty("DTPOSTED")
-        @JsonDeserialize(using = OfxDateSerializer.class)
-        private OffsetDateTime dateTime;
-        @JsonProperty("TRNAMT")
-        private BigDecimal amount;
-        @JsonProperty("FITID")
-        private String fitId;
-        @JsonProperty("NAME")
-        private String name;
-        @JsonProperty("MEMO")
-        private String memo;
-        @JsonProperty("CURRENCY")
-        private OfxCurrency currency;
-
-        public String getType() {
-            return type;
-        }
-
-        public void setType(String type) {
-            this.type = type;
-        }
-
-        public OffsetDateTime getDateTime() {
-            return dateTime;
-        }
-
-        public void setDateTime(OffsetDateTime dateTime) {
-            this.dateTime = dateTime;
-        }
-
-        public BigDecimal getAmount() {
-            return amount;
-        }
-
-        public void setAmount(BigDecimal amount) {
-            this.amount = amount;
-        }
-
-        public String getFitId() {
-            return fitId;
-        }
-
-        public void setFitId(String fitId) {
-            this.fitId = fitId;
-        }
-
-        public String getName() {
-            return name;
-        }
-
-        public void setName(String name) {
-            this.name = name;
-        }
-
-        public String getMemo() {
-            return memo;
-        }
-
-        public void setMemo(String memo) {
-            this.memo = memo;
-        }
-
-        public OfxCurrency getCurrency() {
-            return currency;
-        }
-
-        public void setCurrency(OfxCurrency currency) {
-            this.currency = currency;
-        }
-
-        @Override
-        public String toString() {
-            return "STMTTRN{" +
-                    "TRNTYPE='" + type + '\'' +
-                    ", DTPOSTED='" + dateTime + '\'' +
-                    ", TRNAMT='" + amount + '\'' +
-                    ", FITID='" + fitId + '\'' +
-                    ", NAME='" + name + '\'' +
-                    ", MEMO='" + memo + '\'' +
-                    ", CURRENCY=" + currency +
-                    '}';
-        }
+    private record Statement(
+            @JsonProperty("TRNTYPE") String type,
+            @JsonProperty("DTPOSTED") @JsonDeserialize(using = OfxDateSerializer.class) OffsetDateTime dateTime,
+            @JsonProperty("TRNAMT") BigDecimal amount, @JsonProperty("FITID") String fitId,
+            @JsonProperty("NAME") String name, @JsonProperty("MEMO") String memo,
+            @JsonProperty("CURRENCY") OfxCurrency currency) {
     }
 
-    private static class OfxCurrency {
-        @JsonProperty("CURSYM")
-        private String code;
-        @JsonProperty("CURRATE")
-        private BigDecimal rate;
-
-        public String getCode() {
-            return code;
-        }
-
-        public void setCode(String code) {
-            this.code = code;
-        }
-
-        public BigDecimal getRate() {
-            return rate;
-        }
-
-        public void setRate(BigDecimal rate) {
-            this.rate = rate;
-        }
-
-        @Override
-        public String toString() {
-            return "CURRENCY{" +
-                    "CURSYM='" + code + '\'' +
-                    ", CURRATE='" + rate + '\'' +
-                    '}';
-        }
+    private record OfxCurrency(
+            @JsonProperty("CURSYM") String code,
+            @JsonProperty("CURRATE") BigDecimal rate) {
     }
 
     private static class OfxDateSerializer extends StdDeserializer<OffsetDateTime> {

@@ -10,21 +10,29 @@
     <name>Module: Tinkoff</name>
 
     <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <spring.boot.version>2.5.6</spring.boot.version>
-        <spring.version>5.3.12</spring.version>
-        <java.version>1.8</java.version>
-        <jackson.version>2.12.7</jackson.version>
+
+        <!-- Spring -->
+        <spring.boot.version>2.7.12</spring.boot.version>
+
+        <!-- Commons -->
         <commons-lang3.version>3.12.0</commons-lang3.version>
         <commons-csv.version>1.9.0</commons-csv.version>
-        <commons-io.version>2.11.0</commons-io.version>
         <commons-math3.version>3.6.1</commons-math3.version>
-        <junit.version>4.13.1</junit.version>
-        <logback.version>1.2.6</logback.version>
-        <slf4j.version>1.7.32</slf4j.version>
+
+        <!-- Logging -->
+        <logback.version>1.2.12</logback.version>
+        <slf4j.version>1.7.36</slf4j.version>
+
+        <!-- Testing -->
+        <junit.version>5.8.2</junit.version>
+        <assertj.version>3.24.2</assertj.version>
+
         <!-- Own modules -->
         <ddd.version>1.4</ddd.version>
-        <accounting.module.version>1.71</accounting.module.version>
+        <accounting.module.version>2.0</accounting.module.version>
     </properties>
 
     <dependencies>
@@ -49,9 +57,13 @@
         </dependency>
 
         <dependency>
-            <groupId>commons-io</groupId>
-            <artifactId>commons-io</artifactId>
-            <version>${commons-io.version}</version>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
         </dependency>
 
         <dependency>
@@ -61,35 +73,8 @@
         </dependency>
 
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-web</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-configuration-processor</artifactId>
-            <optional>true</optional>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-logging</artifactId>
-        </dependency>
-
-        <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-core</artifactId>
-            <exclusions>
-                <exclusion>
-                    <groupId>commons-logging</groupId>
-                    <artifactId>commons-logging</artifactId>
-                </exclusion>
-            </exclusions>
         </dependency>
 
         <dependency>
@@ -101,40 +86,30 @@
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>${jackson.version}</version>
         </dependency>
 
         <dependency>
             <groupId>com.fasterxml.jackson.dataformat</groupId>
             <artifactId>jackson-dataformat-xml</artifactId>
-            <version>${jackson.version}</version>
         </dependency>
 
-        <!--
-        Unit Testing
-        -->
+        <!-- Testing -->
 
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.junit.vintage</groupId>
-            <artifactId>junit-vintage-engine</artifactId>
-            <scope>test</scope>
             <exclusions>
                 <exclusion>
-                    <groupId>org.hamcrest</groupId>
-                    <artifactId>hamcrest-core</artifactId>
+                    <groupId>org.junit.vintage</groupId>
+                    <artifactId>junit-vintage-engine</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
 
         <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
             <scope>test</scope>
         </dependency>
 
@@ -143,6 +118,7 @@
             <artifactId>assertj-core</artifactId>
             <scope>test</scope>
         </dependency>
+
 
     </dependencies>
 
@@ -158,21 +134,16 @@
             </dependency>
 
             <dependency>
-                <groupId>junit</groupId>
-                <artifactId>junit</artifactId>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter-engine</artifactId>
                 <version>${junit.version}</version>
+                <scope>test</scope>
             </dependency>
 
             <dependency>
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-lang3</artifactId>
                 <version>${commons-lang3.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.springframework</groupId>
-                <artifactId>spring-core</artifactId>
-                <version>${spring.version}</version>
             </dependency>
 
             <dependency>
@@ -187,21 +158,17 @@
                 <version>${logback.version}</version>
             </dependency>
 
+            <dependency>
+                <groupId>org.assertj</groupId>
+                <artifactId>assertj-core</artifactId>
+                <version>${assertj.version}</version>
+                <scope>test</scope>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
     <build>
         <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.1</version>
-                <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
-                </configuration>
-            </plugin>
-
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
@@ -213,7 +180,7 @@
             <plugin>
                 <groupId>com.amashchenko.maven.plugin</groupId>
                 <artifactId>gitflow-maven-plugin</artifactId>
-                <version>1.13.0</version>
+                <version>1.20.0</version>
                 <configuration>
                     <gitFlowConfig>
                         <productionBranch>main</productionBranch>

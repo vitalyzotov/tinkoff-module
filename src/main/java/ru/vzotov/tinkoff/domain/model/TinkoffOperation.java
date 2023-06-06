@@ -11,21 +11,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Objects;
 
-public class TinkoffOperation implements ValueObject<TinkoffOperation>, AccountReportOperation {
-
-    private final AccountNumber accountNumber;
-    private final LocalDateTime operationDate;
-    private final LocalDate paymentDate;
-    private final String cardNumber;
-    private final Double operationAmount;
-    private final String operationCurrency;
-    private final Double paymentAmount;
-    private final String paymentCurrency;
-    private final Double cashBack;
-    private final String category;
-    private final String mcc;
-    private final String description;
-    private final Double bonus;
+public record TinkoffOperation(AccountNumber accountNumber, LocalDateTime operationDate, LocalDate paymentDate,
+                               String cardNumber, Double operationAmount, String operationCurrency,
+                               Double paymentAmount, String paymentCurrency, Double cashBack, String category,
+                               String mcc, String description,
+                               Double bonus) implements ValueObject<TinkoffOperation>, AccountReportOperation {
 
     public TinkoffOperation(AccountNumber accountNumber, LocalDateTime operationDate, LocalDate paymentDate, String cardNumber, Double operationAmount, String operationCurrency, Double paymentAmount, String paymentCurrency, Double cashBack, String category, String mcc, String description, Double bonus) {
         Validate.notNull(operationDate);
@@ -51,64 +41,12 @@ public class TinkoffOperation implements ValueObject<TinkoffOperation>, AccountR
         this.bonus = bonus;
     }
 
-    public AccountNumber accountNumber() {
-        return accountNumber;
-    }
-
     public boolean isHold() {
         return this.paymentDate == null;
     }
 
     public boolean isCardOperation() {
         return this.mcc != null && !(this.cardNumber == null || this.cardNumber.isEmpty());
-    }
-
-    public LocalDateTime operationDate() {
-        return operationDate;
-    }
-
-    public LocalDate paymentDate() {
-        return paymentDate;
-    }
-
-    public String cardNumber() {
-        return cardNumber;
-    }
-
-    public Double operationAmount() {
-        return operationAmount;
-    }
-
-    public String operationCurrency() {
-        return operationCurrency;
-    }
-
-    public Double paymentAmount() {
-        return paymentAmount;
-    }
-
-    public String paymentCurrency() {
-        return paymentCurrency;
-    }
-
-    public Double cashBack() {
-        return cashBack;
-    }
-
-    public String category() {
-        return category;
-    }
-
-    public String mcc() {
-        return mcc;
-    }
-
-    public String description() {
-        return description;
-    }
-
-    public Double bonus() {
-        return bonus;
     }
 
     @Override
@@ -136,24 +74,6 @@ public class TinkoffOperation implements ValueObject<TinkoffOperation>, AccountR
         if (o == null || getClass() != o.getClass()) return false;
         TinkoffOperation that = (TinkoffOperation) o;
         return sameValueAs(that);
-    }
-
-    @Override
-    public int hashCode() {
-        return Objects.hash(accountNumber
-                , operationDate
-                , paymentDate
-                , cardNumber
-                , operationAmount
-                , operationCurrency
-                , paymentAmount
-                , paymentCurrency
-                , cashBack
-                , category
-                , mcc
-                , description
-                , bonus
-        );
     }
 
     @Override
