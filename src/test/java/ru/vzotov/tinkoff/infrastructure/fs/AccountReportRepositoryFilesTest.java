@@ -67,7 +67,7 @@ public class AccountReportRepositoryFilesTest {
         final AccountReport<TinkoffOperation> csvOperations = repo.parseCSV(new AccountReportId(csvName, Instant.now()), new File(BASEDIR, csvName));
         final AccountReport<TinkoffOperation> ofxOperations = repo.parseOFX(new AccountReportId(ofxName, Instant.now()), new File(BASEDIR, ofxName));
         assertThat(ofxOperations.operations())
-                .usingElementComparatorIgnoringFields("accountNumber", "mcc", "description", "bonus", "cashBack")
+                .usingRecursiveFieldByFieldElementComparatorIgnoringFields("accountNumber", "mcc", "description", "bonus", "cashBack")
                 .hasSameElementsAs(csvOperations.operations());
     }
 
