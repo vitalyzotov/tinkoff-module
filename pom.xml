@@ -23,7 +23,7 @@
         <commons-io.version>2.12.0</commons-io.version>
 
         <!-- Own modules -->
-        <ddd.version>1.4</ddd.version>
+        <ddd.version>2.0</ddd.version>
         <accounting.module.version>2.0</accounting.module.version>
     </properties>
 
