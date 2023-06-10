@@ -1,8 +1,6 @@
 package ru.vzotov.tinkoff.infrastructure.fs;
 
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
+import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ru.vzotov.accounting.domain.model.AccountReport;
@@ -20,7 +18,6 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@RunWith(JUnit4.class)
 public class AccountReportRepositoryFilesTest {
 
     public static final File BASEDIR = new File("src/test/resources/account-reports");
@@ -48,7 +45,7 @@ public class AccountReportRepositoryFilesTest {
                 log.info("Try to process operation {}", row);
                 assertThat(row.cardNumber()).isNotEmpty();
                 assertThat(row.mcc()).isNotNull();
-                row.operationDate().toLocalDate();
+                assertThat(row.operationDate()).isNotNull();
                 new Money(row.operationAmount(), Currency.getInstance(row.operationCurrency()));
                 new MccCode(row.mcc());
             }
@@ -70,7 +67,7 @@ public class AccountReportRepositoryFilesTest {
         final AccountReport<TinkoffOperation> csvOperations = repo.parseCSV(new AccountReportId(csvName, Instant.now()), new File(BASEDIR, csvName));
         final AccountReport<TinkoffOperation> ofxOperations = repo.parseOFX(new AccountReportId(ofxName, Instant.now()), new File(BASEDIR, ofxName));
         assertThat(ofxOperations.operations())
-                .usingElementComparatorIgnoringFields("accountNumber", "mcc", "description", "bonus", "cashBack")
+                .usingRecursiveFieldByFieldElementComparatorIgnoringFields("accountNumber", "mcc", "description", "bonus", "cashBack")
                 .hasSameElementsAs(csvOperations.operations());
     }
 

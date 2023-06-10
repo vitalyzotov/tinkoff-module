@@ -1,6 +1,6 @@
 package ru.vzotov.tinkoff.application.impl;
 
-import org.apache.commons.lang.Validate;
+import org.apache.commons.lang3.Validate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +35,6 @@ import java.util.Currency;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 import static ru.vzotov.banking.domain.model.OperationType.DEPOSIT;
 import static ru.vzotov.banking.domain.model.OperationType.WITHDRAW;
@@ -86,7 +85,7 @@ public class AccountReportServiceTinkoff implements AccountReportService {
                 List<Card> cardList = cardRepository.findByMask(cardNumber)
                         .stream()
                         .filter(c -> BankId.TINKOFF.equals(c.issuer()))
-                        .collect(Collectors.toList());
+                        .toList();
 
                 if (cardList.isEmpty()) {
                     throw new IllegalCardNumberException(String.format("Unable to find card by mask %s", cardNumber));
@@ -94,7 +93,7 @@ public class AccountReportServiceTinkoff implements AccountReportService {
                     card = cardList.get(0);
                     context.put(cardNumber, card);
                 } else {
-                    throw new IllegalCardNumberException(String.format("Multiple cards found by mask {}", cardNumber));
+                    throw new IllegalCardNumberException(String.format("Multiple cards found by mask %s", cardNumber));
                 }
             }
         }
@@ -155,7 +154,7 @@ public class AccountReportServiceTinkoff implements AccountReportService {
                     );
                 } else {
                     final String transactionId = DigestUtils.md5DigestAsHex(
-                            (row.operationDate().toString() + "_" + row.cardNumber() + "_" + row.operationAmount().toString())
+                            (row.operationDate().toString() + "_" + row.cardNumber() + "_" + row.operationAmount())
                                     .getBytes(StandardCharsets.UTF_8)
                     );
 

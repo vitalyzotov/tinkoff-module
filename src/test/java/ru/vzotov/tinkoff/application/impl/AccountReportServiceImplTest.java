@@ -1,10 +1,11 @@
 package ru.vzotov.tinkoff.application.impl;
 
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.junit.runners.JUnit4;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.junit.jupiter.MockitoExtension;
 import ru.vzotov.accounting.application.AccountNotFoundException;
 import ru.vzotov.accounting.application.AccountReportNotFoundException;
 import ru.vzotov.accounting.application.AccountingService;
@@ -20,14 +21,11 @@ import ru.vzotov.banking.domain.model.Card;
 import ru.vzotov.banking.domain.model.CardNumber;
 import ru.vzotov.banking.domain.model.OperationId;
 import ru.vzotov.banking.domain.model.OperationType;
-import ru.vzotov.person.domain.model.PersonId;
 import ru.vzotov.banking.domain.model.TransactionReference;
 import ru.vzotov.domain.model.Money;
+import ru.vzotov.person.domain.model.PersonId;
 import ru.vzotov.tinkoff.domain.model.TinkoffOperation;
-import ru.vzotov.tinkoff.infrastructure.fs.TinkoffReportRepositoryFiles;
 
-import java.io.File;
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.Month;
@@ -37,31 +35,29 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-@RunWith(JUnit4.class)
+@ExtendWith(MockitoExtension.class)
 public class AccountReportServiceImplTest {
 
     private static final AccountNumber ACCOUNT_NUMBER = new AccountNumber("40817810000016123456");
     private static final Account ACCOUNT = new Account(ACCOUNT_NUMBER, new PersonId("vzotov"));
     private static final CardNumber CARD_NUMBER = new CardNumber("5536913837701234");
 
-    private AccountReportServiceTinkoff service;
-    private AccountReportId reportId;
+    @Mock
     private AccountReportRepository<TinkoffOperation> reportRepository;
+    @Mock
     private AccountingService accountingService;
+    @Mock
     private AccountRepository accountRepository;
+    @Mock
     private CardRepository cardRepository;
 
+    private AccountReportServiceTinkoff service;
 
-    @Before
-    @SuppressWarnings("unchecked")
+
+    @BeforeEach
     public void setUp() throws Exception {
-        reportRepository = Mockito.mock(AccountReportRepository.class);
-        accountingService = Mockito.mock(AccountingService.class);
-        accountRepository = Mockito.mock(AccountRepository.class);
-        cardRepository = Mockito.mock(CardRepository.class);
-
         service = new AccountReportServiceTinkoff(reportRepository, accountingService, accountRepository, cardRepository);
-        reportId = new AccountReportId("test-1", LocalDate.now().atStartOfDay().toInstant(ZoneOffset.UTC));
+        AccountReportId reportId = new AccountReportId("test-1", LocalDate.now().atStartOfDay().toInstant(ZoneOffset.UTC));
 
         List<TinkoffOperation> operations = Arrays.asList(
                 new TinkoffOperation(
@@ -117,7 +113,7 @@ public class AccountReportServiceImplTest {
                 Mockito.eq(CARD_NUMBER), Mockito.any(LocalDate.class)
         )).thenReturn(ACCOUNT);
 
-        Mockito.when(accountRepository.find(Mockito.eq(ACCOUNT_NUMBER))).thenReturn(ACCOUNT);
+        //Mockito.when(accountRepository.find(Mockito.eq(ACCOUNT_NUMBER))).thenReturn(ACCOUNT);
     }
 
     @Test
