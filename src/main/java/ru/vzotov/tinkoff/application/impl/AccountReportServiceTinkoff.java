@@ -154,7 +154,7 @@ public class AccountReportServiceTinkoff implements AccountReportService {
                     );
                 } else {
                     final String transactionId = DigestUtils.md5DigestAsHex(
-                            (row.operationDate().toString() + "_" + row.cardNumber() + "_" + row.operationAmount().toString())
+                            (row.operationDate().toString() + "_" + row.cardNumber() + "_" + row.operationAmount())
                                     .getBytes(StandardCharsets.UTF_8)
                     );
 

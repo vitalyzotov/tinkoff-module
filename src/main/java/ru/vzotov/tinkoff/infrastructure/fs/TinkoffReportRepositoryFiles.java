@@ -166,7 +166,7 @@ public class TinkoffReportRepositoryFiles implements AccountReportRepository<Tin
             while (sr.hasNext()) {
                 int eventType = sr.next();
                 switch (eventType) {
-                    case START_ELEMENT:
+                    case START_ELEMENT -> {
                         tagName = sr.getName().getLocalPart();
                         if ("BANKACCTFROM".equalsIgnoreCase(tagName)) {
                             final OfxBankAccount account = mapper.readValue(sr, OfxBankAccount.class);
@@ -195,13 +195,13 @@ public class TinkoffReportRepositoryFiles implements AccountReportRepository<Tin
                             );
                             operations.add(operation);
                         }
-                        break;
-                    case END_ELEMENT:
+                    }
+                    case END_ELEMENT -> {
                         tagName = sr.getName().getLocalPart();
                         if ("STMTRS".equalsIgnoreCase(tagName)) {
                             currentAccount = null;
                         }
-                        break;
+                    }
                 }
             }
 
@@ -418,7 +418,7 @@ public class TinkoffReportRepositoryFiles implements AccountReportRepository<Tin
                 .optionalEnd()
                 .toFormatter();
 
-        private static final Pattern PATTERN = Pattern.compile("(\\d{14}(\\.\\d{3})?)\\[([+-]\\d{1,2})(\\d{0,2})\\:(\\w+)\\]");
+        private static final Pattern PATTERN = Pattern.compile("(\\d{14}(\\.\\d{3})?)\\[([+-]\\d{1,2})(\\d{0,2}):(\\w+)]");
 
         public OfxDateSerializer() {
             this(null);

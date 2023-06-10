@@ -9,7 +9,6 @@ import ru.vzotov.ddd.shared.ValueObject;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Objects;
 
 public record TinkoffOperation(AccountNumber accountNumber, LocalDateTime operationDate, LocalDate paymentDate,
                                String cardNumber, Double operationAmount, String operationCurrency,

@@ -62,19 +62,6 @@ public class OfxReportServiceImplTest {
                 Mockito.anyString()
         )).thenAnswer(i -> new OperationId(UUID.randomUUID().toString()));
 
-        /*
-        Mockito.when(cardRepository.findByMask("*1234"))
-                .thenReturn(Collections.singletonList(
-                        new Card(CARD_NUMBER, PersonId.nextId(), YearMonth.of(2024, Month.DECEMBER), BankId.TINKOFF)
-                ));
-         */
-
-        /*
-        Mockito.when(accountRepository.findAccountOfCard(
-                Mockito.eq(CARD_NUMBER), Mockito.any(LocalDate.class)
-        )).thenReturn(ACCOUNT);
-         */
-
         Mockito.when(accountRepository.find(Mockito.eq(ACCOUNT_NUMBER))).thenReturn(ACCOUNT);
     }
 
